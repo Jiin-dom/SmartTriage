@@ -1,0 +1,7 @@
+{
+  "type": "commonjs",
+  "dependencies": {
+    "@types/multer": "^1.4.13",
+    "multer": "^1.4.5-lts.1"
+  }
+}
