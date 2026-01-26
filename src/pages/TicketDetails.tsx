@@ -143,6 +143,7 @@ export default function TicketDetails() {
   const [deadlineDraft, setDeadlineDraft] = useState<string>('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [reAnalyzing, setReAnalyzing] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -275,6 +276,26 @@ export default function TicketDetails() {
       setDeadlineDraft(`${year}-${month}-${day}T${hours}:${minutes}`)
     } else {
       setDeadlineDraft('')
+    }
+  }
+
+  async function handleReAnalyze() {
+    if (!id) return
+    const ticketId = id // Type guard
+    setReAnalyzing(true)
+    setError(null)
+    try {
+      const updatedTicket = await api.reAnalyzeTicket(ticketId)
+      setTicket(updatedTicket)
+      // Update priority draft if it changed
+      if (updatedTicket.priority) {
+        setPriorityDraft(updatedTicket.priority as 'low' | 'medium' | 'high' | 'critical')
+      }
+    } catch (err: any) {
+      console.error('Re-analyze error:', err)
+      setError(err.message || 'Failed to re-analyze ticket')
+    } finally {
+      setReAnalyzing(false)
     }
   }
 
@@ -707,10 +728,20 @@ export default function TicketDetails() {
 
             <div className="mt-8 pt-6 border-t border-primary/10">
               <div className="flex items-center justify-between">
-                <p className="text-[10px] text-gray-400">Analysis updated 45s ago</p>
-                <button className="text-[10px] font-bold text-primary flex items-center gap-1">
-                  <span className="material-symbols-outlined text-xs">refresh</span>
-                  Re-Analyze
+                <p className="text-[10px] text-gray-400">
+                  {ticket?.explanation_json?.analyzed_at 
+                    ? `Analysis updated ${new Date(ticket.explanation_json.analyzed_at).toLocaleString()}`
+                    : 'Analysis updated 45s ago'}
+                </p>
+                <button
+                  onClick={handleReAnalyze}
+                  disabled={reAnalyzing || !id}
+                  className="text-[10px] font-bold text-primary flex items-center gap-1 hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                >
+                  <span className={`material-symbols-outlined text-xs ${reAnalyzing ? 'animate-spin' : ''}`}>
+                    refresh
+                  </span>
+                  {reAnalyzing ? 'Analyzing...' : 'Re-Analyze'}
                 </button>
               </div>
             </div>

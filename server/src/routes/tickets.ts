@@ -13,6 +13,7 @@ import {
   getTicketActivity,
   suggestTicketSort,
   deleteTicket,
+  reAnalyzeTicket,
 } from '../services/ticketService'
 import { z } from 'zod'
 import { validate } from '../utils/validate'
@@ -105,6 +106,23 @@ router.get('/:id', requireAuth, async (req, res, next) => {
     }
     res.json(ticket)
   } catch (err) {
+    next(err)
+  }
+})
+
+router.post('/:id/re-analyze', requireAuth, async (req, res, next) => {
+  try {
+    const { id } = req.params
+    if (!id || Array.isArray(id)) {
+      return res.status(400).json({ error: 'Invalid ticket ID' })
+    }
+    const { reAnalyzeTicket } = await import('../services/ticketService')
+    const updatedTicket = await reAnalyzeTicket(id)
+    res.json(updatedTicket)
+  } catch (err: any) {
+    if (err.message === 'Ticket not found') {
+      return res.status(404).json({ error: err.message })
+    }
     next(err)
   }
 })

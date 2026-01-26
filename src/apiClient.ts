@@ -86,6 +86,12 @@ export const api = {
     return request<any>(`/api/tickets/${id}`)
   },
 
+  async reAnalyzeTicket(id: string) {
+    return request<any>(`/api/tickets/${id}/re-analyze`, {
+      method: 'POST',
+    })
+  },
+
   async getTicketComments(id: string) {
     return request<{ data: any[] }>(`/api/tickets/${id}/comments`)
   },

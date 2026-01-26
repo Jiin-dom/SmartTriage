@@ -1,5 +1,6 @@
 import { pool } from '../db'
 import { analyzeTicket } from './aiService'
+import { getUserProfile } from './userService'
 
 export interface TicketFilters {
   status?: string
@@ -256,6 +257,77 @@ export async function createTicket(input: CreateTicketInput) {
   return ticket
 }
 
+/**
+ * Re-analyze an existing ticket with updated AI analysis
+ */
+export async function reAnalyzeTicket(ticketId: string) {
+  // Get current ticket details
+  const ticket = await getTicketDetails(ticketId)
+  if (!ticket) {
+    throw new Error('Ticket not found')
+  }
+
+  // Run AI analysis on current ticket content
+  const aiAnalysis = analyzeTicket({
+    title: ticket.title,
+    description: ticket.description,
+  })
+
+  // Update AI analysis in database
+  await pool.query(
+    `INSERT INTO public.ticket_ai_analysis (
+      ticket_id, predicted_category, category_confidence, urgency_score, urgency_level,
+      sentiment_score, sentiment_label, priority_score, priority_level,
+      summary, suggested_steps, explanation_json
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    ON CONFLICT (ticket_id) DO UPDATE SET
+      predicted_category = EXCLUDED.predicted_category,
+      category_confidence = EXCLUDED.category_confidence,
+      urgency_score = EXCLUDED.urgency_score,
+      urgency_level = EXCLUDED.urgency_level,
+      sentiment_score = EXCLUDED.sentiment_score,
+      sentiment_label = EXCLUDED.sentiment_label,
+      priority_score = EXCLUDED.priority_score,
+      priority_level = EXCLUDED.priority_level,
+      summary = EXCLUDED.summary,
+      suggested_steps = EXCLUDED.suggested_steps,
+      explanation_json = EXCLUDED.explanation_json,
+      analyzed_at = now()`,
+    [
+      ticketId,
+      aiAnalysis.predicted_category,
+      aiAnalysis.category_confidence,
+      aiAnalysis.urgency_score,
+      aiAnalysis.urgency_level,
+      aiAnalysis.sentiment_score,
+      aiAnalysis.sentiment_label,
+      aiAnalysis.priority_score,
+      aiAnalysis.priority_level,
+      aiAnalysis.summary,
+      aiAnalysis.suggested_steps,
+      JSON.stringify(aiAnalysis.explanation_json),
+    ]
+  )
+
+  // Optionally update ticket priority if it changed significantly
+  // (Only if priority wasn't manually set to something different)
+  const currentPriority = ticket.priority || 'low'
+  const newPriority = aiAnalysis.priority_level
+  
+  // Only auto-update priority if it's a significant change (e.g., low -> high, medium -> critical)
+  const priorityOrder: Record<string, number> = { low: 1, medium: 2, high: 3, critical: 4 }
+  const currentLevel = priorityOrder[currentPriority] || 1
+  const newLevel = priorityOrder[newPriority] || 1
+  
+  if (Math.abs(newLevel - currentLevel) >= 2) {
+    // Significant change, update priority
+    await pool.query(`UPDATE public.tickets SET priority = $1 WHERE id = $2`, [newPriority, ticketId])
+  }
+
+  // Return updated ticket with new analysis
+  return await getTicketDetails(ticketId)
+}
+
 export async function getTicketDetails(ticketId: string) {
   const { rows } = await pool.query(
     `SELECT 
@@ -307,6 +379,127 @@ export async function getTicketDetails(ticketId: string) {
   ticket.attachments = attachmentsResult.rows
 
   return ticket
+}
+
+/**
+ * Check if ticket should be auto-escalated based on AI analysis and user preferences
+ * Returns suggested priority level if escalation needed, null otherwise
+ */
+async function checkPriorityEscalation(
+  ticketId: string,
+  userId?: string
+): Promise<{ newPriority: string; reason: string } | null> {
+  // Get ticket with AI analysis
+  const ticket = await getTicketDetails(ticketId)
+  if (!ticket || ticket.status === 'resolved') {
+    return null // Don't escalate resolved tickets
+  }
+
+  // Check user preferences if userId provided
+  if (userId) {
+    try {
+      const userProfile = await getUserProfile(userId)
+      const aiPrefs = userProfile?.ai_preferences || {}
+      if (!aiPrefs.priorityEscalation) {
+        return null // User has escalation disabled
+      }
+    } catch (err) {
+      // If we can't get user profile, skip escalation check
+      return null
+    }
+  }
+
+  const currentPriority = ticket.priority || 'low'
+  const priorityOrder: Record<string, number> = {
+    low: 1,
+    medium: 2,
+    high: 3,
+    critical: 4,
+  }
+  const currentPriorityLevel = priorityOrder[currentPriority] || 1
+
+  // Get AI analysis data
+  const aiAnalysis = ticket.predicted_category
+    ? {
+        sentiment_label: ticket.sentiment_label,
+        urgency_score: ticket.urgency_score,
+        priority_score: ticket.priority_score,
+        priority_level: ticket.priority_level,
+      }
+    : null
+
+  // Get ticket age in hours
+  const createdAt = new Date(ticket.created_at)
+  const ageHours = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60)
+
+  // Get comment count (to detect customer frustration)
+  const comments = await listComments(ticketId)
+  const commentCount = comments.length
+
+  // Check deadline proximity
+  const deadline = ticket.deadline ? new Date(ticket.deadline) : null
+  const hoursUntilDeadline = deadline
+    ? (deadline.getTime() - Date.now()) / (1000 * 60 * 60)
+    : null
+
+  let suggestedPriority: string | null = null
+  let reason = ''
+
+  // Rule 1: Angry sentiment → escalate to high/critical
+  if (aiAnalysis?.sentiment_label === 'angry' && currentPriorityLevel < 3) {
+    suggestedPriority = currentPriorityLevel === 1 ? 'high' : 'critical'
+    reason = 'Customer sentiment detected as angry'
+  }
+  // Rule 2: High urgency score → escalate to high
+  else if (aiAnalysis && aiAnalysis.urgency_score >= 7 && currentPriorityLevel < 3) {
+    suggestedPriority = 'high'
+    reason = `High urgency score detected (${aiAnalysis.urgency_score}/10)`
+  }
+  // Rule 3: Ticket aging + high priority score → escalate
+  else if (
+    aiAnalysis &&
+    aiAnalysis.priority_score >= 7 &&
+    ageHours > 24 &&
+    currentPriorityLevel < 3
+  ) {
+    suggestedPriority = 'high'
+    reason = `High priority ticket aging (${Math.round(ageHours)} hours old)`
+  }
+  // Rule 4: Multiple comments from customer → escalate (indicates frustration)
+  else if (commentCount >= 3 && currentPriorityLevel < 2) {
+    suggestedPriority = 'medium'
+    reason = `Multiple customer interactions detected (${commentCount} comments)`
+  }
+  // Rule 5: Approaching deadline → escalate
+  else if (
+    deadline &&
+    hoursUntilDeadline !== null &&
+    hoursUntilDeadline > 0 &&
+    hoursUntilDeadline < 24 &&
+    currentPriorityLevel < 3
+  ) {
+    suggestedPriority = 'high'
+    reason = `Deadline approaching (${Math.round(hoursUntilDeadline)} hours remaining)`
+  }
+  // Rule 6: Critical categories with high urgency → escalate to critical
+  else if (
+    ['Authentication', 'Billing'].includes(ticket.predicted_category || '') &&
+    aiAnalysis &&
+    aiAnalysis.urgency_score >= 7 &&
+    currentPriorityLevel < 4
+  ) {
+    suggestedPriority = 'critical'
+    reason = `Critical category (${ticket.predicted_category}) with high urgency`
+  }
+
+  if (suggestedPriority && priorityOrder[suggestedPriority] > currentPriorityLevel) {
+    return {
+      newPriority: suggestedPriority,
+      reason,
+    }
+  }
+
+  return null
 }
 
 export async function updateTicket(
@@ -386,6 +579,33 @@ export async function updateTicket(
 
   const ticket = rows[0]
 
+  // Check for auto-escalation (only if priority wasn't manually changed)
+  if (userId && !fields.priority) {
+    try {
+      const oldPriority = ticket.priority
+      const escalation = await checkPriorityEscalation(ticketId, userId)
+      if (escalation && escalation.newPriority !== oldPriority) {
+        // Apply escalation
+        await pool.query(`UPDATE public.tickets SET priority = $1 WHERE id = $2`, [
+          escalation.newPriority,
+          ticketId,
+        ])
+        ticket.priority = escalation.newPriority
+
+        // Log escalation activity
+        await logTicketActivity(ticketId, userId, 'auto_escalated', {
+          from: oldPriority,
+          to: escalation.newPriority,
+          reason: escalation.reason,
+          triggered_by: 'update',
+        })
+      }
+    } catch (err) {
+      // Don't fail the update if escalation check fails
+      console.error('Error checking priority escalation:', err)
+    }
+  }
+
   // Log activity
   if (userId) {
     await logTicketActivity(ticketId, userId, 'updated', fields)
@@ -412,6 +632,37 @@ export async function addComment(ticketId: string, userId: string, message: stri
 
   // Log activity
   await logTicketActivity(ticketId, userId, 'commented', { message })
+
+  // Check for auto-escalation after comment (especially if customer is frustrated)
+  try {
+    const escalation = await checkPriorityEscalation(ticketId, userId)
+    if (escalation) {
+      // Get current ticket priority
+      const ticketResult = await pool.query(`SELECT priority FROM public.tickets WHERE id = $1`, [
+        ticketId,
+      ])
+      const currentPriority = ticketResult.rows[0]?.priority
+
+      if (escalation.newPriority !== currentPriority) {
+        // Apply escalation
+        await pool.query(`UPDATE public.tickets SET priority = $1 WHERE id = $2`, [
+          escalation.newPriority,
+          ticketId,
+        ])
+
+        // Log escalation activity
+        await logTicketActivity(ticketId, userId, 'auto_escalated', {
+          from: currentPriority,
+          to: escalation.newPriority,
+          reason: escalation.reason,
+          triggered_by: 'comment',
+        })
+      }
+    }
+  } catch (err) {
+    // Don't fail the comment if escalation check fails
+    console.error('Error checking priority escalation after comment:', err)
+  }
 
   return comment
 }
