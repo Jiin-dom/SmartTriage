@@ -683,20 +683,37 @@ export async function listComments(ticketId: string) {
 }
 
 export async function getTicketSummary() {
-  const { rows } = await pool.query(`
-    SELECT 
-      COUNT(*) FILTER (WHERE status = 'open') as open_count,
-      COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress_count,
-      COUNT(*) FILTER (WHERE status = 'resolved') as resolved_count,
-      COUNT(*) FILTER (WHERE priority = 'critical') as critical_count,
-      COUNT(*) FILTER (WHERE priority = 'high') as high_count,
-      COUNT(*) FILTER (WHERE priority = 'medium') as medium_count,
-      COUNT(*) FILTER (WHERE priority = 'low') as low_count,
-      COUNT(*) as total_count
+  // Get status counts grouped by status
+  const statusResult = await pool.query(`
+    SELECT status, COUNT(*)::int as count
+    FROM public.tickets
+    GROUP BY status
+  `)
+
+  // Get priority counts grouped by priority
+  const priorityResult = await pool.query(`
+    SELECT priority, COUNT(*)::int as count
+    FROM public.tickets
+    GROUP BY priority
+  `)
+
+  // Get total count
+  const totalResult = await pool.query(`
+    SELECT COUNT(*)::int as total
     FROM public.tickets
   `)
 
-  return rows[0]
+  return {
+    total: totalResult.rows[0]?.total ?? 0,
+    status: statusResult.rows.map((row) => ({
+      status: row.status,
+      count: row.count,
+    })),
+    priority: priorityResult.rows.map((row) => ({
+      priority: row.priority,
+      count: row.count,
+    })),
+  }
 }
 
 export async function smartAssignTicket(ticketId: string) {

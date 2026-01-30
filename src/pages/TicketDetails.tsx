@@ -242,7 +242,7 @@ export default function TicketDetails() {
         deadlineISO = new Date(deadlineDraft).toISOString()
       }
 
-      const updated = await api.updateTicket(ticketId, {
+      await api.updateTicket(ticketId, {
         status: statusDraft,
         priority: priorityDraft,
         assignedTo: assignedDraft,
@@ -250,7 +250,29 @@ export default function TicketDetails() {
         description: editMode ? descriptionDraft : undefined,
         deadline: deadlineISO,
       })
-      setTicket((prev) => (prev ? { ...prev, ...updated } : updated))
+
+      // Re-fetch full ticket details so fields like assigned_to_name are fresh
+      const freshTicket = await api.getTicketDetails(ticketId)
+      setTicket(freshTicket)
+
+      // Sync local drafts with authoritative data (in case of server-side changes)
+      setStatusDraft(freshTicket.status || 'open')
+      setPriorityDraft(freshTicket.priority || 'low')
+      setAssignedDraft(freshTicket.assigned_to ?? null)
+      setTitleDraft(freshTicket.title || '')
+      setDescriptionDraft(freshTicket.description || '')
+      if (freshTicket.deadline) {
+        const deadlineDate = new Date(freshTicket.deadline)
+        const year = deadlineDate.getFullYear()
+        const month = String(deadlineDate.getMonth() + 1).padStart(2, '0')
+        const day = String(deadlineDate.getDate()).padStart(2, '0')
+        const hours = String(deadlineDate.getHours()).padStart(2, '0')
+        const minutes = String(deadlineDate.getMinutes()).padStart(2, '0')
+        setDeadlineDraft(`${year}-${month}-${day}T${hours}:${minutes}`)
+      } else {
+        setDeadlineDraft('')
+      }
+
       setEditMode(false)
       // Reload comments to show the new activity log
       const commentsRes = await api.getTicketComments(ticketId)

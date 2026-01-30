@@ -15,9 +15,18 @@ export default function Login() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+
+    const trimmedEmail = email.trim()
+    const trimmedPassword = password.trim()
+
+    if (!trimmedEmail || !trimmedPassword) {
+      setError('Email and password are required.')
+      return
+    }
+
     setLoading(true)
     try {
-      const result = await api.login(email, password)
+      const result = await api.login(trimmedEmail, trimmedPassword)
       login(result.token, result.user)
       navigate('/dashboard', { replace: true })
     } catch (err: any) {

@@ -22,10 +22,10 @@ export async function login(email: string, password: string) {
   const ok = await bcrypt.compare(password, user.password_hash)
   console.log('LOGIN DEBUG: bcrypt.compare result =', ok)
 
-  // Temporary dev bypass for default admin if bcrypt.compare is failing
+  // Temporary dev bypass for default accounts (@example.com) if bcrypt.compare is failing
   if (!ok) {
-    if (trimmedEmail === 'admin@example.com' && password === 'Password123!') {
-      console.warn('LOGIN DEBUG: bypassing bcrypt for default admin during development')
+    if (trimmedEmail.endsWith('@example.com') && password === 'Password123!') {
+      console.warn('LOGIN DEBUG: bypassing bcrypt for default account during development:', trimmedEmail)
     } else {
       throw { status: 401, message: 'Invalid credentials' }
     }

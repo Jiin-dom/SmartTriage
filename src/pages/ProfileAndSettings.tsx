@@ -35,6 +35,11 @@ export default function ProfileAndSettings() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordUpdating, setPasswordUpdating] = useState(false)
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   // Preferences
   const [notifications, setNotifications] = useState({
@@ -91,6 +96,7 @@ export default function ProfileAndSettings() {
   async function handlePasswordUpdate(e: FormEvent) {
     e.preventDefault()
     setPasswordError(null)
+    setPasswordSuccess(null)
 
     if (newPassword.length < 8) {
       setPasswordError('Password must be at least 8 characters long')
@@ -103,14 +109,17 @@ export default function ProfileAndSettings() {
     }
 
     try {
+      setPasswordUpdating(true)
       await api.updatePassword(currentPassword, newPassword)
-      setSuccess('Password updated successfully')
+      setPasswordSuccess('Password updated successfully')
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
-      setTimeout(() => setSuccess(null), 3000)
+      setTimeout(() => setPasswordSuccess(null), 5000)
     } catch (err: any) {
       setPasswordError(err.message || 'Failed to update password')
+    } finally {
+      setPasswordUpdating(false)
     }
   }
 
@@ -240,14 +249,25 @@ export default function ProfileAndSettings() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Current Password</label>
-                  <input
-                    className="bg-background-light dark:bg-background-dark border-none rounded-lg focus:ring-2 focus:ring-primary/50 py-3 px-4 text-sm"
-                    placeholder="••••••••••••"
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      className="bg-background-light dark:bg-background-dark border-none rounded-lg focus:ring-2 focus:ring-primary/50 py-3 px-4 pr-12 text-sm w-full"
+                      placeholder="••••••••••••"
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-xl">
+                        {showCurrentPassword ? 'visibility_off' : 'visibility'}
+                      </span>
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Two-Factor Auth</label>
@@ -261,30 +281,58 @@ export default function ProfileAndSettings() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">New Password</label>
-                  <input
-                    className="bg-background-light dark:bg-background-dark border-none rounded-lg focus:ring-2 focus:ring-primary/50 py-3 px-4 text-sm"
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                    minLength={8}
-                  />
+                  <div className="relative">
+                    <input
+                      className="bg-background-light dark:bg-background-dark border-none rounded-lg focus:ring-2 focus:ring-primary/50 py-3 px-4 pr-12 text-sm w-full"
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      minLength={8}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-xl">
+                        {showNewPassword ? 'visibility_off' : 'visibility'}
+                      </span>
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Confirm New Password</label>
-                  <input
-                    className="bg-background-light dark:bg-background-dark border-none rounded-lg focus:ring-2 focus:ring-primary/50 py-3 px-4 text-sm"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                    minLength={8}
-                  />
+                  <div className="relative">
+                    <input
+                      className="bg-background-light dark:bg-background-dark border-none rounded-lg focus:ring-2 focus:ring-primary/50 py-3 px-4 pr-12 text-sm w-full"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={8}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-xl">
+                        {showConfirmPassword ? 'visibility_off' : 'visibility'}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
               {passwordError && (
-                <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-2 rounded-lg text-sm">
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-2 rounded-lg text-sm">
                   {passwordError}
+                </div>
+              )}
+              {passwordSuccess && (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 text-green-600 dark:text-green-400 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                  {passwordSuccess}
                 </div>
               )}
               <div className="bg-primary/5 rounded-lg p-4 border border-primary/10">
@@ -295,9 +343,20 @@ export default function ProfileAndSettings() {
               </div>
               <button
                 type="submit"
-                className="bg-gray-900 dark:bg-white dark:text-gray-900 text-white px-6 py-3 rounded-lg text-sm font-black transition-all hover:bg-gray-800"
+                disabled={passwordUpdating}
+                className="bg-gray-900 dark:bg-white dark:text-gray-900 text-white px-6 py-3 rounded-lg text-sm font-black transition-all hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Update Password
+                {passwordUpdating ? (
+                  <>
+                    <span className="material-symbols-outlined animate-spin text-sm">refresh</span>
+                    Updating Password...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">lock</span>
+                    Update Password
+                  </>
+                )}
               </button>
             </form>
           </section>

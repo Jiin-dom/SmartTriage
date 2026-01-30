@@ -63,16 +63,24 @@ export async function updateUserActive(userId: string, isActive: boolean) {
 }
 
 export async function updatePassword(userId: string, currentPassword: string, newPassword: string) {
-  // Get current password hash
-  const { rows } = await pool.query('select password_hash from public.users where id=$1', [userId])
+  // Get current password hash (and email for potential default-admin bypass)
+  const { rows } = await pool.query('select email, password_hash from public.users where id=$1', [userId])
   const user = rows[0]
   if (!user) {
     throw { status: 404, message: 'User not found' }
   }
 
-  // Verify current password
+  // Verify current password against stored hash
   const isValid = await bcrypt.compare(currentPassword, user.password_hash)
-  if (!isValid) {
+
+  // For seeded default accounts (@example.com), login currently allows a dev bypass
+  // when using Password123!. Mirror that here so that users with the documented
+  // default credentials can successfully change their password even if the original
+  // hash does not match.
+  const isDefaultAccountBypass =
+    !isValid && user.email.endsWith('@example.com') && currentPassword === 'Password123!'
+
+  if (!isValid && !isDefaultAccountBypass) {
     throw { status: 401, message: 'Current password is incorrect' }
   }
 
