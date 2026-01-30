@@ -7,7 +7,7 @@ export async function login(email: string, password: string) {
   const trimmedEmail = email.trim()
 
   const { rows } = await pool.query(
-    'select id, email, password_hash, role from users where email=$1 and is_active=true',
+    'select id, email, password_hash, role from public.users where email=$1 and is_active=true',
     [trimmedEmail]
   )
   const user = rows[0]
@@ -16,6 +16,10 @@ export async function login(email: string, password: string) {
   console.log('LOGIN DEBUG: user found =', !!user, 'email =', trimmedEmail)
 
   if (!user) {
+    throw { status: 401, message: 'Invalid credentials' }
+  }
+
+  if (!user.password_hash) {
     throw { status: 401, message: 'Invalid credentials' }
   }
 

@@ -70,6 +70,10 @@ export async function updatePassword(userId: string, currentPassword: string, ne
     throw { status: 404, message: 'User not found' }
   }
 
+  if (!user.password_hash) {
+    throw { status: 401, message: 'Current password is incorrect' }
+  }
+
   // Verify current password against stored hash
   const isValid = await bcrypt.compare(currentPassword, user.password_hash)
 
@@ -127,5 +131,8 @@ export async function updateUserPreferences(
      COALESCE(ai_preferences, '{}'::jsonb) as ai_preferences`,
     params
   )
+  if (rows.length === 0) {
+    throw { status: 404, message: 'User not found' }
+  }
   return rows[0]
 }

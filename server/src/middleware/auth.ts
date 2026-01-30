@@ -10,7 +10,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
   const token = header.slice(7)
   try {
-    const payload = jwt.verify(token, config.jwtSecret)
+    const payload = jwt.verify(token, config.jwtSecret) as Record<string, unknown>
+    if (payload == null || typeof payload.sub !== 'string') {
+      return res.status(401).json({ error: 'Invalid token' })
+    }
     ;(req as any).user = payload
     next()
   } catch {

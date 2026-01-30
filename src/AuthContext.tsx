@@ -36,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const handleLogin = (newToken: string, newUser: AuthUser) => {
+    if (!newToken || !newUser?.id) return
     setToken(newToken)
     setUser(newUser)
     setAuthToken(newToken)

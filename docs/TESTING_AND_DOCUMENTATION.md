@@ -652,7 +652,17 @@ VALUES (
 );
 ```
 
-### 7.2 Sample Tickets
+### 7.2 Fix password hashes (so dev bypass isn’t needed)
+
+If `@example.com` users can’t log in or change password (wrong or placeholder hashes), fix hashes with:
+
+```bash
+npm run fix:passwords
+```
+
+This updates all users with email ending in `@example.com` to use a correct bcrypt hash for the default password `Password123!`. After that, login and “change password” work without the dev bypass.
+
+### 7.3 Sample Tickets
 
 Create sample tickets with varying:
 - Statuses (open, in_progress, resolved)
@@ -661,7 +671,7 @@ Create sample tickets with varying:
 - Urgency levels
 - Sentiment labels
 
-### 7.3 Database Reset Script
+### 7.4 Database Reset Script
 
 Create a script to reset test database:
 ```bash

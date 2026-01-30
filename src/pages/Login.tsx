@@ -27,6 +27,10 @@ export default function Login() {
     setLoading(true)
     try {
       const result = await api.login(trimmedEmail, trimmedPassword)
+      if (!result?.token || !result?.user) {
+        setError('Invalid response from server')
+        return
+      }
       login(result.token, result.user)
       navigate('/dashboard', { replace: true })
     } catch (err: any) {

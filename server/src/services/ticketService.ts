@@ -133,7 +133,8 @@ export async function listTickets(filters: TicketFilters) {
     ${whereClause}
   `
   const countResult = await pool.query(countQuery, params)
-  const total = parseInt(countResult.rows[0].total, 10)
+  const countRow = countResult.rows[0]
+  const total = countRow ? Math.max(0, parseInt(String(countRow.total), 10) || 0) : 0
 
   // Data query
   params.push(filters.limit)
@@ -624,10 +625,10 @@ export async function addComment(ticketId: string, userId: string, message: stri
 
   const comment = rows[0]
 
-  // Get user name
+  // Attach author_name for frontend
   const userResult = await pool.query(`SELECT name FROM public.users WHERE id = $1`, [userId])
   if (userResult.rows.length > 0) {
-    comment.user_name = userResult.rows[0].name
+    comment.author_name = userResult.rows[0].name
   }
 
   // Log activity
@@ -671,7 +672,7 @@ export async function listComments(ticketId: string) {
   const { rows } = await pool.query(
     `SELECT 
       c.id, c.ticket_id, c.user_id, c.message, c.created_at,
-      u.name as user_name, u.email as user_email
+      u.name as author_name, u.email as user_email
     FROM public.ticket_comments c
     LEFT JOIN public.users u ON c.user_id = u.id
     WHERE c.ticket_id = $1
